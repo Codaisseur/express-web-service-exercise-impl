@@ -8,13 +8,14 @@ const books = [
     { id: 4, title: "The Diary of a Young Girl", author: "Anne Frank" }
 ]
 app.get('/', (req, res) => res.redirect('/books'))
-app.get('/books', (req, res) => res.json({ books }))
+app.get('/books', (req, res) => res.json({ data: books }))
 app.get('/books/:bookId', (req, res) => {
     const bookId = req.params.bookId
     const book = books.find(b => b.id == bookId)
-    if (!book) {
+    if (book) {
+        res.json(book)
+    } else {
         res.status(404).end()
     }
-    res.json(book)
 })
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
