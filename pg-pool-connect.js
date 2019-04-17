@@ -3,17 +3,22 @@ const pool = new Pool({ connectionString: 'postgresql://postgres:secret@localhos
 pool.on('error', (err, client) => {
     console.error('error event on pool', err)
 })
-pool.connect((err, client, done) => {
-    if (err) {
-        done()
-        console.error('error in connect', err)
-    } else {
-        client.query('SELECT NOW()', (err, res) => {
-            done()
-            if (err) {
-                console.error('error in query', err)
-            } else {
-                console.log(res.rows)
-            }
-        })
-    }})
+
+function getDatabaseTime() {
+    pool.connect((err, client, release) => {
+        if (err) {
+            console.error('error in connect', err)
+        } else {
+            client.query('SELECT NOW()', (err, res) => {
+                release()
+                if (err) {
+                    console.error('error in query', err)
+                } else {
+                    console.log(res.rows)
+                }
+            })
+        }
+    })
+}
+
+setInterval(getDatabaseTime, 1000)
