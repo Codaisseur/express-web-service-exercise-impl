@@ -26,7 +26,7 @@ pool.query(`
         PRIMARY KEY (id),
         CONSTRAINT "owner" FOREIGN KEY (user_id)
             REFERENCES "user" (id)
-    )`)
+    );`)
     .then(() => console.log('Tables created successfully'))
     .catch(() => {
         console.error('Unable to create tables, shutting down...');
@@ -93,12 +93,18 @@ app.post('/users/:userId/tasks', (req, res, next) => {
 })
 // Update an existing task
 app.put('/users/:userId/tasks/:taskId', (req, res, next) => {
-    pool.query('UPDATE "task" SET description = $3, completed = $4 WHERE id = $1 AND user_id = $2 RETURNING id, user_id, description, completed', [
-        req.params.taskId,
-        req.params.userId,
-        req.body.description,
-        req.body.completed
-    ])
+    pool.query(`
+    UPDATE "task" SET 
+        description = $3,
+        completed = $4
+    WHERE 
+        id = $1 AND user_id = $2 
+    RETURNING id, user_id, description, completed`, [
+            req.params.taskId,
+            req.params.userId,
+            req.body.description,
+            req.body.completed
+        ])
         .then(results => {
             if (results.rowCount === 0) {
                 res.status(404).end()
