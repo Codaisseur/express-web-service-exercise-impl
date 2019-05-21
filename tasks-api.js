@@ -13,7 +13,7 @@ pool.query(`
     CREATE TABLE IF NOT EXISTS "user" 
     (
         id SERIAL,
-        email VARCHAR(255),
+        email VARCHAR(255) NOT NULL,
         PRIMARY KEY (id),
         UNIQUE (email)
     );
@@ -28,15 +28,19 @@ pool.query(`
             REFERENCES "user" (id)
     );`)
     .then(() => console.log('Tables created successfully'))
-    .catch(() => {
-        console.error('Unable to create tables, shutting down...');
+    .catch(err => {
+        console.error('Unable to create tables, shutting down...', err);
         process.exit(1);
     })
 
 app.use(bodyParser.json())
+// Test end-point
+app.post('/echo', (req, res) => {
+    res.json(req.body)
+})
 // Create a new user account
 app.post('/users', (req, res, next) => {
-    pool.query('INSERT INTO "user" (email) VALUES ($1) RETURNING id, email', [req.body.email])
+    pool.query('INSERT INTO "user" (email) VALUES ($1) RETURNING *', [req.body.email])
         .then(results => res.json(results.rows[0]))
         .catch(next)
 })
@@ -54,7 +58,7 @@ app.get('/users/:userId', (req, res, next) => {
 })
 // Update a user's information
 app.put('/users/:userId', (req, res, next) => {
-    pool.query('UPDATE "user" SET email = $2 WHERE id = $1 RETURNING id, email', [req.params.userId, req.body.email])
+    pool.query('UPDATE "user" SET email = $2 WHERE id = $1 RETURNING *', [req.params.userId, req.body.email])
         .then(results => {
             if (results.rowCount === 0) {
                 res.status(404).end()
@@ -84,7 +88,7 @@ app.get('/users/:userId/tasks/:taskId', (req, res, next) => {
 })
 // Create a new task
 app.post('/users/:userId/tasks', (req, res, next) => {
-    pool.query('INSERT INTO "task" (user_id, description) VALUES ($1, $2) RETURNING id, user_id, description, completed', [
+    pool.query('INSERT INTO "task" (user_id, description) VALUES ($1, $2) RETURNING *', [
         req.params.userId,
         req.body.description
     ])
