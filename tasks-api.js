@@ -1,32 +1,35 @@
 const express = require('express')
 const bodyParser = require('body-parser')
-const app = express()
-const { Pool } = require('pg')
+const Sequelize = require('sequelize');
 
 const port = 4000
 
-const pool = new Pool({ connectionString: 'postgresql://postgres:secret@localhost:5432/postgres' })
-pool.on('error', (err) => {
-    console.error('error event on pool', err)
+const app = express()
+const sequelize = new Sequelize('postgres://postgres:secret@localhost:5432/postgres');
+
+const User = sequelize.define('user', {
+    email: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true
+    }
+});
+
+const Task = sequelize.define('task', {
+    userId: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+    },
+    description: {
+        type: Sequelize.STRING
+    },
+    completed: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false
+    }
 })
-pool.query(`
-    CREATE TABLE IF NOT EXISTS "user" 
-    (
-        id SERIAL,
-        email VARCHAR(255) NOT NULL,
-        PRIMARY KEY (id),
-        UNIQUE (email)
-    );
-    CREATE TABLE IF NOT EXISTS "task"
-    (
-        id SERIAL NOT NULL,
-        user_id INTEGER NOT NULL,
-        description VARCHAR(255),
-        completed BOOLEAN DEFAULT false NOT NULL,
-        PRIMARY KEY (id),
-        CONSTRAINT "owner" FOREIGN KEY (user_id)
-            REFERENCES "user" (id)
-    );`)
+
+sequelize.sync()
     .then(() => console.log('Tables created successfully'))
     .catch(err => {
         console.error('Unable to create tables, shutting down...', err);
@@ -40,103 +43,118 @@ app.post('/echo', (req, res) => {
 })
 // Create a new user account
 app.post('/users', (req, res, next) => {
-    pool.query('INSERT INTO "user" (email) VALUES ($1) RETURNING *', [req.body.email])
-        .then(results => res.json(results.rows[0]))
+    User.create(req.body)
+        .then(user => res.json(user))
         .catch(next)
 })
 // Get a user's information
 app.get('/users/:userId', (req, res, next) => {
-    pool.query('SELECT * FROM "user" WHERE id = $1', [req.params.userId])
-        .then(results => {
-            if (results.rowCount === 0) {
+    User.findByPk(req.params.userId)
+        .then(user => {
+            if (!user) {
                 res.status(404).end()
             } else {
-                res.json(results.rows[0])
+                res.json(user)
             }
         })
         .catch(next)
 })
 // Update a user's information
 app.put('/users/:userId', (req, res, next) => {
-    pool.query('UPDATE "user" SET email = $2 WHERE id = $1 RETURNING *', [req.params.userId, req.body.email])
-        .then(results => {
-            if (results.rowCount === 0) {
-                res.status(404).end()
-            } else {
-                res.json(results.rows[0])
+    User.findByPk(req.params.userId)
+        .then(user => {
+            if (user) {
+                return user.update(req.body)
+                    .then(user => res.json(user))
             }
+            return res.status(404).end()
         })
         .catch(next)
+
 })
 // Get all user's tasks
 app.get('/users/:userId/tasks', (req, res, next) => {
-    pool.query('SELECT * FROM "task" WHERE user_id = $1', [req.params.userId])
-        .then(results => res.json({ data: results.rows }))
+    Task.findAll({ where: { userId: req.params.userId } })
+        .then(tasks => {
+            res.json(tasks)
+        })
         .catch(next)
 })
 // Get a single user task
 app.get('/users/:userId/tasks/:taskId', (req, res, next) => {
-    pool.query('SELECT * FROM "task" WHERE user_id = $1 AND id = $2', [req.params.userId, req.params.taskId])
-        .then(results => {
-            if (results.rowCount === 0) {
-                res.status(404).end()
-            } else {
-                res.json(results.rows[0])
+    Task.findOne({
+        where: {
+            id: req.params.taskId,
+            userId: req.params.userId
+        }
+    })
+        .then(task => {
+            if (task) {
+                return res.json(task)
             }
+            return res.status(404).end()
         })
         .catch(next)
 })
 // Create a new task
 app.post('/users/:userId/tasks', (req, res, next) => {
-    pool.query('INSERT INTO "task" (user_id, description) VALUES ($1, $2) RETURNING *', [
-        req.params.userId,
-        req.body.description
-    ])
-        .then(results => res.json(results.rows[0]))
+    User.findByPk(req.params.userId)
+        .then(user => {
+            if (!user) {
+                return res.status(404).end()
+            }
+            return Task.create({
+                ...req.body,
+                userId: req.params.userId
+            }).then(task => {
+                res.json(task)
+            })
+        })
         .catch(next)
 })
 // Update an existing task
 app.put('/users/:userId/tasks/:taskId', (req, res, next) => {
-    pool.query(`
-    UPDATE "task" SET 
-        description = $3,
-        completed = $4
-    WHERE 
-        id = $1 AND user_id = $2 
-    RETURNING id, user_id, description, completed`, [
-            req.params.taskId,
-            req.params.userId,
-            req.body.description,
-            req.body.completed
-        ])
-        .then(results => {
-            if (results.rowCount === 0) {
-                res.status(404).end()
-            } else {
-                res.json(results.rows[0])
+    Task.findOne({
+        where: {
+            id: req.params.taskId,
+            userId: req.params.userId
+        }
+    })
+        .then(task => {
+            if (task) {
+                return task.update(req.body)
+                    .then(task => res.json(task))
             }
+            return res.status(404).end()
         })
         .catch(next)
 })
 // Delete a user's task
 app.delete('/users/:userId/tasks/:taskId', (req, res, next) => {
-    pool.query('DELETE FROM "task" WHERE id = $1 AND user_id = $2', [req.params.taskId, req.params.userId])
-        .then(results => {
-            if (results.rowCount === 0) {
-                res.status(404).end()
-            } else {
-                if (!results.rows[0]) {
-                    res.status(204)
-                }
-                res.json(results.rows[0])
+    Task.destroy({
+        where: {
+            id: req.params.taskId,
+            userId: req.params.userId
+        }
+    })
+        .then(numDeleted => {
+            if (numDeleted) {
+                return res.status(204).end()
             }
+            return res.status(404).end()
         })
         .catch(next)
 })
 // Delete all user's tasks
 app.delete('/users/:userId/tasks', (req, res, next) => {
-    pool.query('DELETE FROM "task" WHERE user_id = $1', [req.params.userId])
-        .then(() => res.status(204).end())
+    Task.destroy({
+        where: {
+            userId: req.params.userId,
+        }
+    })
+        .then(() => {
+            return res.status(204).end()
+        })
         .catch(next)
 })
 
